@@ -1,12 +1,10 @@
-/* Live 1v1 rooms: authoritative game state, turn timers and SSE broadcasting. */
+/* Live 1v1 rooms: authoritative game state and SSE broadcasting. */
 const crypto = require('crypto');
 const T = require('../public/js/engine.js');
 const { HttpError, cleanNick } = require('./store.js');
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
-const MAX_TIMEOUTS = 3;
-const TIMERS = [20, 30, 45, 60];
 
 const genCode = () => {
   let c;
@@ -20,7 +18,6 @@ function newRound(room) {
   room.puzzle = T.buildPuzzle(room.seed, room.theme, room.difficulty);
   room.board = Array(9).fill(null);
   room.scores = [0, 0];
-  room.timeouts = [0, 0];
   room.winner = null;
   room.winLine = null;
   room.reason = null;
@@ -30,17 +27,16 @@ function newRound(room) {
   room.turn = room.starter;
 }
 
-function createRoom({ nick, theme, difficulty, timer, quick }) {
+function createRoom({ nick, theme, difficulty, quick }) {
   nick = cleanNick(nick);
   if (!nick) throw new HttpError(400, 'Pick a nickname');
   if (!T.THEMES[theme]) theme = 'classic';
   if (!T.DIFFICULTIES[difficulty]) difficulty = 'normal';
-  timer = TIMERS.includes(Number(timer)) ? Number(timer) : 45;
   const room = {
-    code: genCode(), theme, difficulty, timer, quick: !!quick,
+    code: genCode(), theme, difficulty, quick: !!quick,
     players: [{ nick, token: token(), conns: new Set() }],
     status: 'waiting', starter: 0, wins: [0, 0], createdAt: Date.now(), touched: Date.now(),
-    clients: new Set(), timeoutHandle: null, deadline: null,
+    clients: new Set(),
   };
   rooms.set(room.code, room);
   newRound(room);
@@ -67,7 +63,7 @@ function joinRoom(code, nick, tok) {
   if (!nick) throw new HttpError(400, 'Pick a nickname');
   room.players.push({ nick, token: token(), conns: new Set() });
   room.status = 'playing';
-  armTimer(room);
+  room.touched = Date.now();
   broadcast(room);
   return { room, seat: 1 };
 }
@@ -81,30 +77,8 @@ function quickMatch({ nick, theme }) {
       return { room, seat, matched: true };
     }
   }
-  const { room, seat } = createRoom({ nick, theme, difficulty: 'normal', timer: 45, quick: true });
+  const { room, seat } = createRoom({ nick, theme, difficulty: 'normal', quick: true });
   return { room, seat, matched: false };
-}
-
-function armTimer(room) {
-  clearTimeout(room.timeoutHandle);
-  room.deadline = null;
-  if (room.status !== 'playing') return;
-  room.deadline = Date.now() + room.timer * 1000;
-  room.timeoutHandle = setTimeout(() => onTimeout(room), room.timer * 1000 + 50);
-  if (room.timeoutHandle.unref) room.timeoutHandle.unref();
-}
-
-function onTimeout(room) {
-  if (room.status !== 'playing') return;
-  const seat = room.turn;
-  room.timeouts[seat]++;
-  room.lastEvent = { type: 'timeout', seat, ts: Date.now() };
-  if (room.timeouts[seat] >= MAX_TIMEOUTS) {
-    return finish(room, 1 - seat, 'forfeit');
-  }
-  room.turn = 1 - seat;
-  armTimer(room);
-  broadcast(room);
 }
 
 function finish(room, winnerSeat, reason, line) {
@@ -113,8 +87,6 @@ function finish(room, winnerSeat, reason, line) {
   room.reason = reason;
   room.winLine = line || null;
   if (winnerSeat === 0 || winnerSeat === 1) room.wins[winnerSeat]++;
-  clearTimeout(room.timeoutHandle);
-  room.deadline = null;
   broadcast(room);
 }
 
@@ -130,10 +102,9 @@ function move(code, tok, cell, iso) {
   iso = String(iso || '').toUpperCase();
   if (!T.byIso[iso]) throw new HttpError(400, 'Unknown answer');
   room.touched = Date.now();
-  room.timeouts[seat] = 0;
   const used = room.board.some((b) => b && b.iso === iso);
   const valid = !used && T.checkGuess(room.puzzle, cell, iso);
-  const pts = valid ? room.puzzle.points[cell] : 0;
+  const pts = valid ? T.pickPoints(room.puzzle, cell, iso) : 0;
   room.lastEvent = { type: valid ? 'claim' : 'miss', seat, cell, iso, pts, reason: used ? 'used' : undefined, ts: Date.now() };
   if (valid) {
     room.board[cell] = { seat, iso, pts };
@@ -147,7 +118,6 @@ function move(code, tok, cell, iso) {
     }
   }
   room.turn = 1 - seat;
-  armTimer(room);
   broadcast(room);
   return { valid, pts, reason: used ? 'used' : undefined };
 }
@@ -162,7 +132,6 @@ function rematch(code, tok) {
     room.starter = 1 - room.starter;
     room.status = 'playing';
     newRound(room);
-    armTimer(room);
   }
   broadcast(room);
 }
@@ -177,7 +146,6 @@ function resign(code, tok) {
 }
 
 function closeRoom(room) {
-  clearTimeout(room.timeoutHandle);
   for (const res of room.clients) { try { res.end(); } catch (e) { /* ignore */ } }
   room.clients.clear();
   rooms.delete(room.code);
@@ -185,13 +153,12 @@ function closeRoom(room) {
 
 function publicState(room) {
   return {
-    code: room.code, theme: room.theme, difficulty: room.difficulty, timer: room.timer, quick: room.quick,
-    status: room.status, round: room.round, now: Date.now(), deadline: room.deadline,
+    code: room.code, theme: room.theme, difficulty: room.difficulty, quick: room.quick,
+    status: room.status, round: room.round, now: Date.now(),
     players: room.players.map((p) => ({ nick: p.nick, online: p.conns.size > 0 })),
     puzzle: T.publicPuzzle(room.puzzle),
     board: room.board, turn: room.turn, scores: room.scores, wins: room.wins, starter: room.starter,
     winner: room.winner, winLine: room.winLine, reason: room.reason, lastEvent: room.lastEvent, rematch: room.rematch,
-    timeouts: room.timeouts,
     answers: room.status === 'finished' ? room.puzzle.answers.map((_, i) => T.answerLabels(room.puzzle, i)) : undefined,
   };
 }

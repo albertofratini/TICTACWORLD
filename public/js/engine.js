@@ -4,7 +4,7 @@
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./data.js'));
   else root.TTW = factory(root.TTWData);
 })(this, function (D) {
-  const { countries, byIso, LISTS } = D;
+  const { countries, byIso, LISTS, FAME } = D;
 
   // ---------- text helpers ----------
   const norm = (s) =>
@@ -144,17 +144,13 @@
   };
 
   // ---------- rarity ----------
-  function pointsFor(n) {
-    if (n <= 1) return 10;
-    if (n === 2) return 8;
-    if (n <= 4) return 6;
-    if (n <= 8) return 4;
-    if (n <= 19) return 3;
-    if (n <= 39) return 2;
-    return 1;
-  }
-  const TIERS = { 10: 'legendary', 8: 'epic', 6: 'rare', 4: 'uncommon', 3: 'common', 2: 'common', 1: 'common' };
-  const tierOf = (pts) => TIERS[pts] || 'common';
+  // Points belong to the PICK, not the square: obscure answers pay more than obvious ones,
+  // and squares that only have a few valid answers add a bonus.
+  const fameTier = (iso) => (FAME[1].has(iso) ? 1 : FAME[2].has(iso) ? 2 : 3);
+  const FAME_BASE = { 1: 1, 2: 3, 3: 5 };
+  const scarcityBonus = (n) => (n <= 1 ? 4 : n === 2 ? 3 : n <= 4 ? 2 : n <= 8 ? 1 : 0);
+  const pickPoints = (puzzle, cell, iso) => FAME_BASE[fameTier(iso)] + scarcityBonus(puzzle.answers[cell].length);
+  const tierOf = (pts) => (pts >= 8 ? 'legendary' : pts >= 6 ? 'epic' : pts >= 4 ? 'rare' : pts >= 2 ? 'uncommon' : 'common');
   const LINE_BONUS = 5;
   const FULL_BONUS = 10;
   const MAX_STRIKES = 3;
@@ -266,7 +262,6 @@
         seed: String(seed), theme: theme.id, difficulty: diff.id,
         rows: rows.map((p) => p.cr.id), cols: cols.map((p) => p.cr.id),
         answers: cells,
-        points: cells.map((a) => pointsFor(a.length)),
       };
       puzzleCache.set(key, puzzle);
       if (puzzleCache.size > 500) puzzleCache.delete(puzzleCache.keys().next().value);
@@ -275,7 +270,7 @@
     throw new Error('Could not generate puzzle for ' + key);
   }
   // what a client may see (no answers)
-  const publicPuzzle = (p) => ({ seed: p.seed, theme: p.theme, difficulty: p.difficulty, rows: p.rows, cols: p.cols, points: p.points });
+  const publicPuzzle = (p) => ({ seed: p.seed, theme: p.theme, difficulty: p.difficulty, rows: p.rows, cols: p.cols });
 
   // ---------- guessing ----------
   const entryCache = {};
@@ -292,18 +287,19 @@
     list.sort((a, b) => a.label.localeCompare(b.label));
     return (entryCache[themeId] = list);
   }
+  const MIN_SEARCH = 3;
+  // Suggestions only appear after MIN_SEARCH letters (or an exact alias such as "UK"), so the list can't be browsed.
   function search(themeId, query) {
     const q = norm(query);
     const all = entries(themeId);
-    if (!q) return all;
+    if (!q) return [];
     const scored = [];
     for (const e of all) {
       let best = -1;
       for (const k of e.keys) {
         if (k === q) best = Math.max(best, 3);
-        else if (k.startsWith(q)) best = Math.max(best, 2);
-        else if (k.split(' ').some((w) => w.startsWith(q))) best = Math.max(best, 1);
-        else if (q.length >= 3 && k.includes(q)) best = Math.max(best, 0);
+        else if (q.length >= MIN_SEARCH && k.startsWith(q)) best = Math.max(best, 2);
+        else if (q.length >= MIN_SEARCH && k.split(' ').some((w) => w.startsWith(q))) best = Math.max(best, 1);
       }
       if (best >= 0) scored.push([best, e]);
     }
@@ -311,7 +307,10 @@
   }
   const checkGuess = (puzzle, cell, iso) => !!puzzle.answers[cell] && puzzle.answers[cell].includes(iso);
   const answerLabels = (puzzle, cell) =>
-    puzzle.answers[cell].map((iso) => (THEMES[puzzle.theme].answer === 'capital' ? byIso[iso].capital : byIso[iso].name)).sort();
+    puzzle.answers[cell]
+      .map((iso) => ({ pts: pickPoints(puzzle, cell, iso), label: THEMES[puzzle.theme].answer === 'capital' ? byIso[iso].capital : byIso[iso].name }))
+      .sort((a, b) => b.pts - a.pts || a.label.localeCompare(b.label))
+      .map((x) => `${x.label} · +${x.pts}`);
 
   // ---------- scoring ----------
   function completedLines(owned) {
@@ -336,7 +335,7 @@
 
   return {
     countries, byIso, CRITERIA, THEMES, DIFFICULTIES, LINES, LINE_BONUS, FULL_BONUS, MAX_STRIKES,
-    norm, flagEmoji, pointsFor, tierOf, buildPuzzle, publicPuzzle, entries, search, checkGuess,
+    norm, flagEmoji, pickPoints, tierOf, MIN_SEARCH, buildPuzzle, publicPuzzle, entries, search, checkGuess,
     answerLabels, soloScore, completedLines, lineWinner, dailySeed, rngFor,
   };
 });

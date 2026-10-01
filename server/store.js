@@ -209,7 +209,7 @@ function guess(c, id, token, cell, iso) {
   if (Object.values(res.cells).some((x) => x.iso === iso)) throw new HttpError(409, 'Already used in this grid');
   const valid = T.checkGuess(puzzle, cell, iso);
   if (valid) {
-    res.cells[cell] = { iso, pts: puzzle.points[cell] };
+    res.cells[cell] = { iso, pts: T.pickPoints(puzzle, cell, iso) };
   } else {
     res.strikes++;
   }
@@ -217,7 +217,7 @@ function guess(c, id, token, cell, iso) {
   res.updatedAt = Date.now();
   rescore(res);
   save();
-  return { valid, pts: valid ? puzzle.points[cell] : 0, me: myView(res), answers: res.done ? puzzle.answers.map((a, i) => ({ cell: i, labels: T.answerLabels(puzzle, i) })) : undefined };
+  return { valid, pts: valid ? res.cells[cell].pts : 0, me: myView(res), answers: res.done ? puzzle.answers.map((a, i) => ({ cell: i, labels: T.answerLabels(puzzle, i) })) : undefined };
 }
 
 function finish(c, id, token) {

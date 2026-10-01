@@ -90,8 +90,7 @@
       for (let c = 0; c < 3; c++) {
         const i = r * 3 + c;
         const cell = cells[i];
-        const pts = cell ? cell.pts : puzzle.points[i];
-        const cls = ['cell', 't-' + T.tierOf(pts), cell ? 'filled' : 'empty'];
+        const cls = ['cell', cell ? 't-' + T.tierOf(cell.pts) : 't-common', cell ? 'filled' : 'empty'];
         if (cell && cell.owner != null) cls.push('owner-' + cell.owner);
         if (opts.winLine && opts.winLine.includes(i)) cls.push('win');
         if (opts.flash && opts.flash.cell === i) cls.push(opts.flash.kind);
@@ -103,16 +102,14 @@
             h('span', { class: 'name' }, labelFor(puzzle.theme, cell.iso)),
             h('span', { class: 'badge' }, '+' + cell.pts),
           ];
-        } else if (opts.reveal) {
-          cls.push('missed');
-          body = [h('span', { class: 'q' }, '?'), h('span', { class: 'tier' }, '+' + pts)];
         } else {
-          body = [h('span', { class: 'pts' }, '+' + pts), h('span', { class: 'tier' }, tierName[T.tierOf(pts)])];
+          if (opts.reveal) cls.push('missed');
+          body = [h('span', { class: 'q' }, opts.reveal ? '?' : '＋')];
         }
         const clickable = !cell && opts.onCell && !opts.disabled;
         board.append(h('button', {
           class: cls.join(' '), disabled: !clickable && !(opts.reveal && !cell && opts.onCell), onclick: () => opts.onCell && opts.onCell(i),
-          'aria-label': cell ? `${labelFor(puzzle.theme, cell.iso)}, ${cell.pts} points` : `Empty square, worth ${pts} points`,
+          'aria-label': cell ? `${labelFor(puzzle.theme, cell.iso)}, ${cell.pts} points` : 'Empty square',
         }, body));
       }
     }
@@ -121,20 +118,21 @@
 
   const legend = () => h('div', { class: 'legend' },
     ['legendary', 'epic', 'rare', 'uncommon', 'common'].map((t) => h('span', { class: 't-' + t }, h('i'), tierName[t])),
-    h('span', {}, '· rarer answer = more points'));
+    h('span', {}, '· the less obvious your pick, the more points'));
 
   function openPicker({ puzzle, cell, used, onPick }) {
     const theme = T.THEMES[puzzle.theme];
     const rc = T.CRITERIA[puzzle.rows[Math.floor(cell / 3)]];
     const cc = T.CRITERIA[puzzle.cols[cell % 3]];
     const input = h('input', {
-      class: 'field', type: 'search', placeholder: theme.answer === 'capital' ? 'Type a capital city…' : 'Type a country…',
+      class: 'field', type: 'text', placeholder: theme.answer === 'capital' ? 'Type a capital city…' : 'Type a country…',
       autocomplete: 'off', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', enterkeyhint: 'go', 'aria-label': 'Search',
     });
     const list = h('div', { class: 'plist' });
     let close = () => {};
     const fill = () => {
       const res = T.search(puzzle.theme, input.value);
+      if (input.value.trim().length < T.MIN_SEARCH && !res.length) { list.replaceChildren(h('div', { class: 'empty-note' }, `Type at least ${T.MIN_SEARCH} letters to see suggestions`)); return; }
       if (!res.length) { list.replaceChildren(h('div', { class: 'empty-note' }, 'No match — check the spelling')); return; }
       list.replaceChildren(...res.map((e) => {
         const isUsed = used.has(e.iso);
@@ -148,10 +146,10 @@
       if (e.key !== 'Enter') return;
       const first = list.querySelector('.pitem:not(.used)');
       if (first) first.click();
+      e.preventDefault();
     });
-    const pts = puzzle.points[cell];
     close = sheet([
-      h('div', { class: 'row' }, h('h3', { style: 'flex:1' }, 'Pick your answer'), h('span', { class: 'pill t-' + T.tierOf(pts), style: 'color:var(--tier);border-color:var(--tier)' }, '+' + pts + ' pts')),
+      h('h3', {}, 'Pick your answer'),
       h('div', { class: 'clues' }, h('div', {}, rc.icon + ' ', h('b', {}, rc.label)), h('div', {}, cc.icon + ' ', h('b', {}, cc.label))),
       input, list,
     ]);
@@ -202,7 +200,7 @@
       foot.replaceChildren();
       if (!st.done) {
         foot.append(
-          h('div', { class: 'hint' }, 'Tap a square and name something that fits both clues. ' + T.MAX_STRIKES + ' strikes and you’re out. Lines score +' + T.LINE_BONUS + '.'),
+          h('div', { class: 'hint' }, 'Tap a square and name something that fits both clues. ' + T.MAX_STRIKES + ' strikes and you’re out. Obscure picks score more; each line adds +' + T.LINE_BONUS + '.'),
           legend(),
           h('button', { class: 'btn ghost small', onclick: onFinishEarly }, 'Finish & see answers'));
       } else {
@@ -342,15 +340,14 @@
     };
     const createRoom = () => {
       const nick = needNick(); if (!nick) return;
-      let t = theme, d = diff, timer = 45;
+      let t = theme, d = diff;
       const close = sheet([
         h('h3', {}, 'Create a live room'),
         h('div', { class: 'label' }, 'Format'), chips(themeOptions(), t, (v) => (t = v)),
         h('div', { class: 'label' }, 'Difficulty'), chips(diffOptions(), d, (v) => (d = v)),
-        h('div', { class: 'label' }, 'Seconds per turn'), chips([[20, '20'], [30, '30'], [45, '45'], [60, '60']], timer, (v) => (timer = v)),
         h('button', { class: 'btn block', onclick: async () => {
           try {
-            const r = await api('POST', '/rooms', { nick, theme: t, difficulty: d, timer });
+            const r = await api('POST', '/rooms', { nick, theme: t, difficulty: d });
             saveRoom(r); close(); location.hash = '#/r/' + r.code;
           } catch (e) { toast(e.message, 'bad'); }
         } }, 'Create room & get invite link'),
@@ -374,7 +371,7 @@
         h('div', { class: 'label' }, 'Difficulty'), chips(diffOptions(), diff, (v) => { diff = v; ls.set('ttw.diff', v); }),
         h('button', { class: 'btn block', onclick: () => (location.hash = `#/solo?theme=${theme}&diff=${diff}&seed=${rand()}`) }, 'Play')),
       h('div', { class: 'card' },
-        h('h3', {}, '⚔️ Live 1 vs 1'), h('p', {}, 'Take turns claiming squares. Three in a row wins; wrong answers lose your turn.'),
+        h('h3', {}, '⚔️ Live 1 vs 1'), h('p', {}, 'Take turns claiming squares — no clock, take your time. Three in a row wins; a wrong answer loses your turn.'),
         h('div', { class: 'row' },
           h('button', { class: 'btn', style: 'flex:1', onclick: quick }, '⚡ Quick match'),
           h('button', { class: 'btn ghost', style: 'flex:1', onclick: createRoom }, 'Challenge a friend')),
@@ -394,7 +391,7 @@
         ])),
       h('details', { class: 'card' }, h('summary', {}, 'How scoring works'),
         h('ul', {},
-          h('li', {}, 'Each square shows how rare its answers are: +10 legendary (one possible answer) down to +1 common (40+ answers).'),
+          h('li', {}, 'Points are earned by your pick: household-name countries give little, obscure ones give more, and squares with very few valid answers add a bonus (+1 to +9 per pick).'),
           h('li', {}, 'You can’t reuse an answer in the same grid.'),
           h('li', {}, 'Solo & groups: +5 for every completed line (row, column, diagonal) and +10 for a full grid.'),
           h('li', {}, 'Live: first to three in a row wins. If the board fills up, the higher points total wins.'))));
@@ -429,10 +426,10 @@
 
     const guess = async (cell, iso) => {
       const valid = T.checkGuess(puzzle, cell, iso);
-      if (valid) state.cells[cell] = { iso, pts: puzzle.points[cell] }; else state.strikes++;
+      if (valid) state.cells[cell] = { iso, pts: T.pickPoints(puzzle, cell, iso) }; else state.strikes++;
       if (state.cells.every(Boolean) || state.strikes >= T.MAX_STRIKES) state.done = true;
       persist();
-      return { valid, pts: valid ? puzzle.points[cell] : 0, state };
+      return { valid, pts: valid ? state.cells[cell].pts : 0, state };
     };
     const t = T.THEMES[theme];
     const title = daily ? `TicTacWorld Daily ${seed.slice(6)} ${t.icon}` : `TicTacWorld ${t.icon} ${t.name} (${T.DIFFICULTIES[diff].name})`;
@@ -586,7 +583,7 @@
     const id = navId;
     const host = h('div');
     app.append(host);
-    let es = null, tick = null, state = null, offset = 0, lastEventTs = 0, flash = null;
+    let es = null, state = null, lastEventTs = 0, flash = null;
     const sessions = () => ls.get('ttw.rooms', {});
     let sess = sessions()[code] || null;
 
@@ -622,7 +619,6 @@
         if (id !== navId) return;
         const prev = state;
         state = JSON.parse(ev.data);
-        offset = state.now - Date.now();
         if (state.lastEvent && state.lastEvent.ts !== lastEventTs) {
           lastEventTs = state.lastEvent.ts;
           if (prev) flash = state.lastEvent.type === 'claim' ? { cell: state.lastEvent.cell, kind: 'good' } : state.lastEvent.type === 'miss' ? { cell: state.lastEvent.cell, kind: 'bad' } : null;
@@ -630,7 +626,6 @@
         draw();
       };
       es.onerror = () => { /* EventSource retries by itself */ };
-      tick = setInterval(updateTimer, 250);
     }
 
     const nameOf = (seat) => (state.players[seat] ? state.players[seat].nick : '…');
@@ -638,7 +633,6 @@
       const e = state.lastEvent;
       if (!e) return null;
       const who = e.seat === state.you ? 'You' : nameOf(e.seat);
-      if (e.type === 'timeout') return `⏱ ${who} ran out of time`;
       const label = e.iso ? `${T.flagEmoji(e.iso)} ${labelFor(state.theme, e.iso)}` : '';
       if (e.type === 'claim') return `✓ ${who} claimed a square with ${label} (+${e.pts})`;
       return e.reason === 'used' ? `✗ ${who} tried ${label} — already used` : `✗ ${who} tried ${label} — doesn’t fit`;
@@ -663,7 +657,6 @@
           right: h('button', { class: 'icon-btn', 'aria-label': 'Invite', onclick: () => shareOrCopy('Play TicTacWorld with me', 'Play a live geography tic-tac-toe with me!', location.origin + '/#/r/' + s.code) }, '📨') }),
         h('div', { class: 'vs' }, playerBox(0), h('div', { class: 'mid' }, h('span', {}, `${s.wins[0]}–${s.wins[1]}`), h('small', {}, 'series')), playerBox(1)),
       ];
-      if (playing) children.push(h('div', { class: 'timer', id: 'timer' }, h('i')));
       const txt = eventText();
       if (playing) {
         children.push(h('div', { class: 'banner' + (myTurn ? ' mine' : '') },
@@ -678,7 +671,6 @@
       flash = null;
       if (playing && you >= 0) children.push(legend(), h('div', { class: 'foot' }, h('button', { class: 'btn ghost small', onclick: resign }, 'Resign')));
       host.replaceChildren(...children);
-      updateTimer();
     }
 
     function resultCard(txt) {
@@ -690,9 +682,8 @@
         const won = s.winner === you;
         const spectator = you < 0;
         head = spectator ? `🏆 ${nameOf(s.winner)} wins` : won ? '🎉 You win!' : '😬 You lose';
-        sub = { line: 'Three in a row.', points: 'Board full — higher points total wins.', forfeit: 'Opponent timed out three times.', resign: 'Opponent resigned.' }[s.reason] || '';
+        sub = { line: 'Three in a row.', points: 'Board full — higher points total wins.', resign: 'Opponent resigned.' }[s.reason] || '';
         if (s.reason === 'resign' && !won && !spectator) sub = 'You resigned.';
-        if (s.reason === 'forfeit' && !won && !spectator) sub = 'Three timeouts in a row.';
       }
       const myVote = you >= 0 && s.rematch[you];
       return h('div', { class: 'card result' }, h('h3', {}, head), h('p', {}, sub, ` Final: ${s.scores[0]}–${s.scores[1]} pts.`),
@@ -714,15 +705,6 @@
             h('button', { class: 'btn', style: 'flex:1', onclick: () => shareOrCopy('Play TicTacWorld with me', 'Play a live geography tic-tac-toe with me!', link) }, '📨 Invite'),
             h('button', { class: 'btn ghost', onclick: () => copy(link, 'Link copied!') }, 'Copy link')),
           h('button', { class: 'btn ghost block', style: 'margin-top:10px', onclick: async () => { if (sess) { try { await api('POST', `/rooms/${code}/resign`, null, sess.token); } catch (e) { /* ignore */ } } location.hash = '#/'; } }, 'Cancel')));
-    }
-
-    function updateTimer() {
-      const el = document.getElementById('timer');
-      if (!el || !state || !state.deadline) return;
-      const left = Math.max(0, state.deadline - (Date.now() + offset));
-      const frac = Math.min(1, left / (state.timer * 1000));
-      el.firstChild.style.width = frac * 100 + '%';
-      el.classList.toggle('low', left < 8000);
     }
 
     async function onCell(i, myTurn, finished) {
@@ -747,7 +729,7 @@
     const resign = async () => { if (window.confirm('Resign this game?')) { try { await api('POST', `/rooms/${code}/resign`, null, sess.token); } catch (e) { toast(e.message, 'bad'); } } };
 
     start();
-    return () => { if (es) es.close(); clearInterval(tick); };
+    return () => { if (es) es.close(); };
   }
 
   route();

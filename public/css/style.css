@@ -199,3 +199,6 @@ details ul { margin: 6px 0; padding-left: 20px; color: var(--muted); font-size: 
 .formats { display: grid; gap: 6px; font-size: .92rem; }
 .formats div { display: flex; gap: 10px; align-items: baseline; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.cell.empty .q { font-size: 1.8rem; color: var(--muted); font-weight: 300; }
+.cell.empty { border-color: var(--line); }

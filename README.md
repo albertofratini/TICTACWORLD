@@ -5,10 +5,13 @@ Geography tic-tac-toe. Each row and column carries a clue (*"Has more than 60M p
 ## Modes
 - **Solo / Daily** – fill the 3×3 grid with 3 strikes allowed. Daily puzzle is the same for everyone; share your emoji grid.
 - **Friend groups (async)** – create a group, share the link/code, create challenges. Everyone plays the same grid whenever they like; server validates every guess; group leaderboard and per-challenge picks (revealed once you finish).
-- **Live 1 vs 1** – quick match or invite link. Alternate turns, server-side turn timer (20–60 s), wrong answer = lost turn, three in a row wins (full board → higher points wins), rematch with swapped starter, spectators via link.
+- **Live 1 vs 1** – quick match or invite link. Alternate turns (no clock), wrong answer = lost turn, three in a row wins (full board → higher points wins), rematch with swapped starter, spectators via link.
 
-## Rarity scoring
-Points depend on how many valid answers a square has: 1 → **+10 legendary**, 2 → +8 epic, 3–4 → +6 rare, 5–8 → +4 uncommon, 9–19 → +3, 20–39 → +2, 40+ → +1. Solo/group also gives +5 per completed line and +10 for a full grid.
+## Scoring (points belong to your pick)
+Squares don't show a value. What you score depends on the answer you choose: household names (USA, France…) are worth +1, well-known countries +3, obscure ones +5, plus a bonus when the square has few valid answers (+4 if only one, +3 for two, +2 for up to four, +1 for up to eight). So "English-speaking with 5M+ people" pays far less for the USA than for South Africa. Solo/group also gives +5 per completed line and +10 for a full grid. Fame tiers live in `FAME` in `public/js/data.js`.
+
+## No clock, no browsing
+There are no turn timers. The answer box shows suggestions only after three letters are typed, so the list can't be scrolled to find what fits.
 
 ## Formats (themes)
 Implemented: **Countries**, **Capitals** (name the capital; clues about the capital's name too), **Flags** (flag colours/symbols crossed with geography).

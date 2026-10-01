@@ -222,6 +222,12 @@
     curDinar: L('DZ BH IQ JO KW LY RS TN'),
   };
 
+  // How "obvious" a country is as an answer: tier 1 = household names, tier 2 = well known, everything else = tier 3
+  const FAME = {
+    1: L('US GB FR DE IT ES CN JP IN BR RU CA AU MX AR EG TR GR NL CH KR SA IE NZ PT SE PL'),
+    2: L('NO DK FI BE AT UA IL IR IQ AF PK BD ID TH VN PH MY SG KE NG ZA MA DZ TN ET GH TZ CU CO PE CL VE UY EC BO JM CZ HU RO HR RS BG SK IS AE QA KW JO LB SY CY NP LK MM KH KZ MN UZ SD LY SN AO CD CM CI UG ZW LU MT MC'),
+  };
+
   const flagMap = {};
   const countries = ROWS.map((row) => {
     const [iso, name, capital, conts, pop, area, flag] = row.split('|');
@@ -242,5 +248,5 @@
     return c;
   });
 
-  return { countries, byIso: flagMap, LISTS };
+  return { countries, byIso: flagMap, LISTS, FAME };
 });

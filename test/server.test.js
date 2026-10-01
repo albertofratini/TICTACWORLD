@@ -85,7 +85,7 @@ test('group async flow', async () => {
 });
 
 test('live room flow', async () => {
-  const a = (await call('POST', '/rooms', { nick: 'A', theme: 'classic', difficulty: 'easy', timer: 30 })).body;
+  const a = (await call('POST', '/rooms', { nick: 'A', theme: 'classic', difficulty: 'easy' })).body;
   const b = (await call('POST', `/rooms/${a.code}/join`, { nick: 'B' })).body;
   assert.equal(b.seat, 1);
   assert.equal((await call('POST', `/rooms/${a.code}/join`, { nick: 'C' })).status, 409);

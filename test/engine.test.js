@@ -29,14 +29,22 @@ test('generation is deterministic per seed', () => {
   assert.notDeepEqual(T.buildPuzzle('other', 'classic', 'normal').rows.concat(), a.rows.concat().reverse());
 });
 
-test('rarer cells are worth more points', () => {
-  assert.equal(T.pointsFor(1), 10);
-  assert.ok(T.pointsFor(1) > T.pointsFor(2));
-  assert.ok(T.pointsFor(2) > T.pointsFor(4));
-  assert.ok(T.pointsFor(4) > T.pointsFor(8));
-  assert.ok(T.pointsFor(8) >= T.pointsFor(15));
-  assert.equal(T.pointsFor(60), 1);
-  assert.equal(T.tierOf(10), 'legendary');
+test('points belong to the pick: obscure answers beat obvious ones', () => {
+  const cell = (iso) => ({ answers: [['US', 'ZA', iso]] });
+  const p = { answers: [['US', 'ZA', 'NR']] };
+  assert.ok(T.pickPoints(p, 0, 'US') < T.pickPoints(p, 0, 'ZA'));
+  assert.ok(T.pickPoints(p, 0, 'ZA') < T.pickPoints(p, 0, 'NR'));
+  // fewer valid answers in the square -> bonus
+  assert.ok(T.pickPoints({ answers: [['US']] }, 0, 'US') > T.pickPoints({ answers: [Array(20).fill('x')] }, 0, 'US'));
+  assert.equal(T.tierOf(9), 'legendary');
+  assert.equal(T.tierOf(1), 'common');
+});
+
+test('suggestions need three letters', () => {
+  assert.equal(T.search('classic', '').length, 0);
+  assert.equal(T.search('classic', 'ge').length, 0);
+  assert.ok(T.search('classic', 'ger').some((e) => e.iso === 'DE'));
+  assert.equal(T.search('classic', 'uk')[0].iso, 'GB'); // exact alias still works
 });
 
 test('search handles aliases, accents and prefixes', () => {
@@ -46,7 +54,6 @@ test('search handles aliases, accents and prefixes', () => {
   assert.equal(T.search('classic', 'czech')[0].iso, 'CZ');
   assert.equal(T.search('capitals', 'brasilia')[0].iso, 'BR');
   assert.equal(T.search('capitals', 'new delhi')[0].iso, 'IN');
-  assert.equal(T.search('classic', '').length, T.countries.length);
 });
 
 test('known facts hold', () => {
