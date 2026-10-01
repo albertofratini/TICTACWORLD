@@ -1,0 +1,12 @@
+{
+  "name": "tictacworld",
+  "version": "1.0.0",
+  "description": "Geography tic-tac-toe: cross two clues, name a country, claim the square. Solo, friend groups (async) and live 1v1.",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test \"test/*.test.js\""
+  }
+}
